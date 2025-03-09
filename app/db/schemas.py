@@ -1,8 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
 
 class UserCreate(BaseModel):
-    email: EmailStr  # Validación para un email correcto
+    email: str  # Ahora es solo un string, sin validación de correo electrónico
     password: str    # La contraseña en texto, que luego en el backend será encriptada
     username: str    # Nombre de usuario
     gender: Optional[str] = None  # Campo opcional para el género
@@ -14,8 +14,8 @@ class UserCreate(BaseModel):
         orm_mode = True
 
 class UserResponse(BaseModel):
-    id: int
-    email: EmailStr
+    id: str 
+    email: str  # Esto también lo cambiamos a str
     username: str
     gender: Optional[str] = None
     style_preference: Optional[str] = None
