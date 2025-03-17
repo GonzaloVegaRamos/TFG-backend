@@ -145,6 +145,8 @@ async def login_user(user: schemas.UserLogin):
         )
 
 
+
+
 @router.get("/me")
 async def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -153,22 +155,49 @@ async def get_current_user(authorization: str = Header(None)):
     # Extraer el token de la cabecera Authorization
     token = authorization.split("Bearer ")[1]
 
+    # Imprimir el token recibido para ver que llega correctamente
+    print(f"Token recibido: {token}")
+
     try:
         # Usar Supabase para obtener la información del usuario con el token
         user_info = supabase.auth.get_user(token)  # Validar el token con Supabase
+        
+        # Imprimir la respuesta de Supabase para depurar
+        print(f"Respuesta de Supabase: {user_info}")
+
         if not user_info or not user_info.user:
             raise HTTPException(status_code=401, detail="Token inválido")
+
+        # Obtener el auth_id
+        auth_id = user_info.user.id
+        print(f"auth_id: {auth_id}")
+
+        # Hacer una consulta a la tabla 'users' con el auth_id para obtener el 'username'
+        user_data = supabase.table("users").select("username").eq("auth_id", auth_id).single().execute()
+
+        # Verificar si los datos fueron obtenidos correctamente
+        if user_data.data is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        # Imprimir los datos del usuario obtenidos de la tabla 'users'
+        print(f"Datos del usuario: {user_data}")
 
         # Retornar la información del usuario
         return {
             "id": user_info.user.id,
             "email": user_info.user.email,
-            "username": user_info.user.user_metadata.get("username", "Usuario"),
+            "username": user_data.data.get("username", "Usuario"),
         }
 
-    except Exception:
+    except Exception as e:
+        # Imprimir el error que se produce
+        print(f"Error al procesar el token: {e}")
         raise HTTPException(status_code=401, detail="Token inválido")
-    
+
+
+
+
+
 @router.get("/users", response_model=list[schemas.UserResponse])
 async def get_all_users():
     try:
