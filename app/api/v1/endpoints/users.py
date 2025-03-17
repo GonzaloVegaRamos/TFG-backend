@@ -4,6 +4,9 @@ from app.core.auth import authenticate_token  # Importar funciones de auth
 from app.db.database import get_supabase_client  # Usar el cliente de Supabase para interactuar con la DB
 from passlib.context import CryptContext
 from app.db import schemas  # Tus esquemas de Pydantic
+from fastapi import Header
+
+
 
 # Crear el router de usuarios
 router = APIRouter()
@@ -20,8 +23,8 @@ def is_valid_email(email: str) -> bool:
     email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return bool(re.match(email_regex, email))
 
-# Ruta para registrar un nuevo usuario
-@router.post("/register", response_model=schemas.UserResponse)  # Usar UserResponse para la respuesta
+
+@router.post("/register", response_model=schemas.UserResponse)
 async def register_user(user: schemas.UserCreate):
     # Validar el formato del email
     if not is_valid_email(user.email):
@@ -30,7 +33,7 @@ async def register_user(user: schemas.UserCreate):
             detail="El formato del correo electrónico no es válido"
         )
     
-    # Comprobamos si el usuario ya existe por email usando `supabase.auth.get_user_by_email`
+    # Verificar si ya existe en Auth
     try:
         existing_user = supabase.auth.get_user_by_email(user.email)
         if existing_user:
@@ -38,18 +41,17 @@ async def register_user(user: schemas.UserCreate):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Este correo electrónico ya está registrado",
             )
-    except Exception as e:
-        # Si no se encuentra el usuario, continuamos con el registro
+    except Exception:
         pass
 
-    # Validar campos obligatorios: password, username, edad
+    # Validar campos obligatorios
     if not user.password or not user.username or not user.edad:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Todos los campos son requeridos: username, password, y edad"
         )
 
-    # Crear el nuevo usuario en Supabase (usamos `supabase.auth.sign_up` para crear al usuario)
+    # Crear usuario en Supabase Auth
     try:
         new_user = supabase.auth.sign_up({
             'email': user.email,
@@ -60,17 +62,36 @@ async def register_user(user: schemas.UserCreate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al crear el usuario: {str(e)}"
         )
-    
 
-    # Retornamos la información relevante del usuario sin el password
+    # Crear usuario en la tabla personalizada (users o profiles)
+    try:
+        # Aquí insertamos el nuevo usuario en la tabla 'users'
+        supabase.table("users").insert({
+            "auth_id": new_user.user.id,  # UUID de Supabase Auth
+            "email": user.email,
+            "username": user.username,
+            "gender": user.gender,
+            "style_preference": user.style_preference,
+            "edad": user.edad
+        }).execute()
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear usuario en tabla users: {str(e)}"
+        )
+
+    # Respuesta final, no necesitamos detalles adicionales
     return schemas.UserResponse(
         id=new_user.user.id,
-        email=new_user.user.email,
-        username=user.username,  # Usar el username del request
-        gender=user.gender,  # Usar el gender del request
-        style_preference=user.style_preference,  # Usar el style_preference del request
-        edad=user.edad  # Usar la edad del request
+        email=user.email,
+        username=user.username,
+        gender=user.gender,
+        style_preference=user.style_preference,
+        edad=user.edad
     )
+
+
 @router.get("/user/{user_id}", response_model=schemas.UserResponse)
 async def get_user_by_id(user_id: str):
     try:
@@ -97,37 +118,83 @@ async def get_user_by_id(user_id: str):
             detail=f"Error al obtener el usuario: {str(e)}"
         )
     
+
+
+    
 @router.post("/login")
-async def login_user(user: schemas.UserCreate):
+async def login_user(user: schemas.UserLogin):
     try:
         db_user = supabase.auth.sign_in_with_password({
             "email": user.email,
             "password": user.password
         })
-        
+
         if not db_user or "error" in db_user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Credenciales incorrectas"
             )
 
-        # Extraer el token correctamente
         token = db_user.session.access_token
         return {"access_token": token, "token_type": "bearer"}
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Credenciales incorrectas"
         )
 
+
 @router.get("/me")
-async def get_current_user(
-    token: str = Depends(authenticate_token)
-):
-    # Validar el token y obtener el email del usuario
-    user = supabase.auth.get_user(token['sub'])  # Usamos `supabase.auth.get_user` para obtener la info del usuario
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+async def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token no proporcionado")
+
+    # Extraer el token de la cabecera Authorization
+    token = authorization.split("Bearer ")[1]
+
+    try:
+        # Usar Supabase para obtener la información del usuario con el token
+        user_info = supabase.auth.get_user(token)  # Validar el token con Supabase
+        if not user_info or not user_info.user:
+            raise HTTPException(status_code=401, detail="Token inválido")
+
+        # Retornar la información del usuario
+        return {
+            "id": user_info.user.id,
+            "email": user_info.user.email,
+            "username": user_info.user.user_metadata.get("username", "Usuario"),
+        }
+
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido")
     
-    return user  # Retorna los datos del usuario autenticado
+@router.get("/users", response_model=list[schemas.UserResponse])
+async def get_all_users():
+    try:
+        # Aquí asumo que tienes una tabla 'profiles' en tu base de datos de Supabase
+        response = supabase.table("profiles").select("*").execute()
+        
+        if response.error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al obtener los usuarios: {response.error.message}"
+            )
+        
+        users = response.data
+        return [
+            schemas.UserResponse(
+                id=user.get("id"),
+                email=user.get("email"),
+                username=user.get("username"),
+                gender=user.get("gender"),
+                style_preference=user.get("style_preference"),
+                edad=user.get("edad")
+            )
+            for user in users
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error inesperado: {str(e)}"
+        )

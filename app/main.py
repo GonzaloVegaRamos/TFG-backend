@@ -1,7 +1,6 @@
-# app/main.py
-
 from fastapi import FastAPI
-from app.api.v1.endpoints import users  # Importamos el router de usuarios
+from fastapi.middleware.cors import CORSMiddleware  # Importar CORSMiddleware
+from app.api.v1.endpoints import users
 from app.db import models, database
 from app.db.database import get_supabase_client
 
@@ -10,8 +9,16 @@ from app.db import crud, schemas
 # Crear la aplicación FastAPI
 app = FastAPI()
 
-supabase = get_supabase_client()
+# Configuración de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permitir solicitudes desde cualquier origen
+    allow_credentials=True,
+    allow_methods=["*"],  # Permitir todos los métodos HTTP (GET, POST, etc.)
+    allow_headers=["*"],  # Permitir todos los headers
+)
 
+supabase = get_supabase_client()
 
 # Incluir las rutas de usuarios en la API con el prefijo '/users'
 app.include_router(users.router, prefix="/users", tags=["users"])
