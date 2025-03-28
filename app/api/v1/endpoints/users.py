@@ -227,3 +227,55 @@ async def get_all_users():
             status_code=500,
             detail=f"Error inesperado: {str(e)}"
         )
+      
+from fastapi import HTTPException
+
+@router.get("/ropa")
+async def get_ropa(tipo: str = None):
+    """Obtener las prendas de ropa filtradas por tipo"""
+    try:
+        if tipo:
+            # Si el parámetro 'tipo' está presente, filtramos las prendas por ese tipo
+            response = supabase.table("ropa").select("*").eq("tipo", tipo).execute()
+        else:
+            # Si no se pasa el parámetro 'tipo', obtenemos todas las prendas de ropa
+            response = supabase.table("ropa").select("*").execute()
+
+        # Verificamos si la respuesta es exitosa
+        if not response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontraron prendas de ropa."
+            )
+
+        # Devolvemos las prendas de ropa obtenidas
+        return response.data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error inesperado al obtener las prendas de ropa: {str(e)}"
+        )
+
+
+@router.get("/ropa/camisetas")
+async def get_camisetas():
+    """Obtener todas las prendas de tipo 'Camiseta'"""
+    try:
+        response = supabase.table("ropa").select("*").eq("tipo", "Camiseta").execute()
+
+        # Comprobar si la respuesta tiene datos
+        if response.data is None or len(response.data) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontraron camisetas"
+            )
+
+        # Devolver las camisetas encontradas
+        return response.data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener las camisetas: {str(e)}"
+        )
+
