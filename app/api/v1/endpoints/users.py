@@ -5,8 +5,12 @@ from app.db.database import get_supabase_client  # Usar el cliente de Supabase p
 from passlib.context import CryptContext
 from app.db import schemas  # Tus esquemas de Pydantic
 from fastapi import Header
-
-
+from uuid import UUID, uuid4
+from fastapi import Header, HTTPException
+from uuid import UUID, uuid4
+from fastapi import Header, HTTPException
+from supabase import Client
+from uuid import UUID, uuid4
 
 # Crear el router de usuarios
 router = APIRouter()
@@ -117,10 +121,8 @@ async def get_user_by_id(user_id: str):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al obtener el usuario: {str(e)}"
         )
-    
 
 
-    
 @router.post("/login")
 async def login_user(user: schemas.UserLogin):
     try:
@@ -145,8 +147,6 @@ async def login_user(user: schemas.UserLogin):
         )
 
 
-
-
 @router.get("/me")
 async def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -155,47 +155,23 @@ async def get_current_user(authorization: str = Header(None)):
     # Extraer el token de la cabecera Authorization
     token = authorization.split("Bearer ")[1]
 
-    # Imprimir el token recibido para ver que llega correctamente
-    print(f"Token recibido: {token}")
-
     try:
         # Usar Supabase para obtener la información del usuario con el token
         user_info = supabase.auth.get_user(token)  # Validar el token con Supabase
         
-        # Imprimir la respuesta de Supabase para depurar
-        print(f"Respuesta de Supabase: {user_info}")
-
         if not user_info or not user_info.user:
             raise HTTPException(status_code=401, detail="Token inválido")
 
         # Obtener el auth_id
         auth_id = user_info.user.id
-        print(f"auth_id: {auth_id}")
 
-        # Hacer una consulta a la tabla 'users' con el auth_id para obtener el 'username'
-        user_data = supabase.table("users").select("username").eq("auth_id", auth_id).single().execute()
-
-        # Verificar si los datos fueron obtenidos correctamente
-        if user_data.data is None:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-        # Imprimir los datos del usuario obtenidos de la tabla 'users'
-        print(f"Datos del usuario: {user_data}")
-
-        # Retornar la información del usuario
+        # Retornar solo el auth_id
         return {
-            "id": user_info.user.id,
-            "email": user_info.user.email,
-            "username": user_data.data.get("username", "Usuario"),
+            "auth_id": auth_id
         }
 
     except Exception as e:
-        # Imprimir el error que se produce
-        print(f"Error al procesar el token: {e}")
         raise HTTPException(status_code=401, detail="Token inválido")
-
-
-
 
 
 @router.get("/users", response_model=list[schemas.UserResponse])
@@ -227,8 +203,7 @@ async def get_all_users():
             status_code=500,
             detail=f"Error inesperado: {str(e)}"
         )
-      
-from fastapi import HTTPException
+
 
 @router.get("/ropa")
 async def get_ropa(tipo: str = None):
@@ -258,24 +233,52 @@ async def get_ropa(tipo: str = None):
         )
 
 
-@router.get("/ropa/camisetas")
-async def get_camisetas():
-    """Obtener todas las prendas de tipo 'Camiseta'"""
+
+from uuid import UUID
+from fastapi import HTTPException, Header
+from fastapi.encoders import jsonable_encoder
+from uuid import UUID
+from fastapi import HTTPException
+
+@router.post("/conjuntos")
+async def guardar_conjunto(conjunto: schemas.ConjuntoCreate, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token no proporcionado")
+
+    token = authorization.split("Bearer ")[1]
+
     try:
-        response = supabase.table("ropa").select("*").eq("tipo", "Camiseta").execute()
+        # Validación de usuario (tu código actual)
+        user_info = supabase.auth.get_user(token)
+        if not user_info or not user_info.user:
+            raise HTTPException(status_code=401, detail="Token inválido")
 
-        # Comprobar si la respuesta tiene datos
-        if response.data is None or len(response.data) == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontraron camisetas"
-            )
+        user_data_response = supabase.table("users").select("id").eq("auth_id", user_info.user.id).single().execute()
+        user_data = user_data_response.data
 
-        # Devolver las camisetas encontradas
-        return response.data
+        # Preparar datos para Supabase
+        datos_conjunto = {
+            "nombre": conjunto.nombre,
+            "usuario": user_data["id"],
+            # Conversión explícita a string para Supabase
+            "camiseta": str(conjunto.camiseta) if conjunto.camiseta else None,
+            "ral": str(conjunto.ral) if conjunto.ral else None,
+            "pb": str(conjunto.pb) if conjunto.pb else None,
+            "calzado": str(conjunto.calzado) if conjunto.calzado else None,
+            "accesorio": str(conjunto.accesorio) if conjunto.accesorio else None,
+            "chaqueta": str(conjunto.chaqueta) if conjunto.chaqueta else None,
+        }
+
+        # Insertar en Supabase
+        respuesta = supabase.table("conjuntos").insert(datos_conjunto).execute()
+
+        if not respuesta.data:
+            raise HTTPException(status_code=500, detail="Error al guardar el conjunto")
+
+        return {
+            "mensaje": "Conjunto guardado exitosamente",
+            "conjunto": respuesta.data[0]
+        }
+
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al obtener las camisetas: {str(e)}"
-        )
-
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
