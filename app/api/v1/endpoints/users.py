@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import Header, HTTPException
 from supabase import Client
 from uuid import UUID, uuid4
+from fastapi import Path
 
 # Crear el router de usuarios
 router = APIRouter()
@@ -206,24 +207,24 @@ async def get_all_users():
 
 
 @router.get("/ropa")
-async def get_ropa(tipo: str = None):
-    """Obtener las prendas de ropa filtradas por tipo"""
+async def get_ropa(tipo: str = None, id: str = None):
+    """Obtener prendas de ropa filtradas por tipo o por id"""
     try:
-        if tipo:
-            # Si el parámetro 'tipo' está presente, filtramos las prendas por ese tipo
-            response = supabase.table("ropa").select("*").eq("tipo", tipo).execute()
-        else:
-            # Si no se pasa el parámetro 'tipo', obtenemos todas las prendas de ropa
-            response = supabase.table("ropa").select("*").execute()
+        query = supabase.table("ropa").select("*")
+        
+        if id:
+            query = query.eq("id", id)
+        elif tipo:
+            query = query.eq("tipo", tipo)
+        
+        response = query.execute()
 
-        # Verificamos si la respuesta es exitosa
         if not response.data:
             raise HTTPException(
                 status_code=404,
                 detail="No se encontraron prendas de ropa."
             )
-
-        # Devolvemos las prendas de ropa obtenidas
+        
         return response.data
 
     except Exception as e:
@@ -248,7 +249,7 @@ async def guardar_conjunto(conjunto: schemas.ConjuntoCreate, authorization: str 
     token = authorization.split("Bearer ")[1]
 
     try:
-        # Validación de usuario (tu código actual)
+        # Validación de usuario
         user_info = supabase.auth.get_user(token)
         if not user_info or not user_info.user:
             raise HTTPException(status_code=401, detail="Token inválido")
@@ -260,7 +261,6 @@ async def guardar_conjunto(conjunto: schemas.ConjuntoCreate, authorization: str 
         datos_conjunto = {
             "nombre": conjunto.nombre,
             "usuario": user_data["id"],
-            # Conversión explícita a string para Supabase
             "camiseta": str(conjunto.camiseta) if conjunto.camiseta else None,
             "ral": str(conjunto.ral) if conjunto.ral else None,
             "pb": str(conjunto.pb) if conjunto.pb else None,
@@ -275,14 +275,17 @@ async def guardar_conjunto(conjunto: schemas.ConjuntoCreate, authorization: str 
         if not respuesta.data:
             raise HTTPException(status_code=500, detail="Error al guardar el conjunto")
 
+        conjunto_guardado = respuesta.data[0]
+
         return {
             "mensaje": "Conjunto guardado exitosamente",
-            "conjunto": respuesta.data[0]
+            "id": conjunto_guardado["codigo"],  # ✅ esto es lo que necesitas para compartir
+            "conjunto": conjunto_guardado
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
-    
+
 
 
 @router.get("/mis-conjuntos", response_model=list[schemas.ConjuntoCreate])
@@ -316,3 +319,19 @@ async def obtener_conjuntos_del_usuario(authorization: str = Header(None)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener los conjuntos: {str(e)}")
+    
+    from fastapi import Path
+
+@router.get("/conjuntos/{id_conjunto}", response_model=schemas.ConjuntoCreate)
+async def obtener_conjunto_por_id(id_conjunto: str = Path(..., description="ID del conjunto a obtener")):
+    try:
+        # Buscar el conjunto en la tabla "conjuntos" por id
+        response = supabase.table("conjuntos").select("*").eq("codigo", id_conjunto).single().execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Conjunto no encontrado")
+
+        return response.data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener el conjunto: {str(e)}")
