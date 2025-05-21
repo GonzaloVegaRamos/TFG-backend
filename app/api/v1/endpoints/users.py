@@ -205,10 +205,9 @@ async def get_all_users():
             detail=f"Error inesperado: {str(e)}"
         )
 
-
 @router.get("/ropa")
-async def get_ropa(tipo: str = None, id: str = None):
-    """Obtener prendas de ropa filtradas por tipo o por id"""
+async def get_ropa(tipo: str = None, id: str = None, genero: str = None):
+    """Obtener prendas de ropa filtradas por tipo, género o por id"""
     try:
         query = supabase.table("ropa").select("*")
         
@@ -217,12 +216,16 @@ async def get_ropa(tipo: str = None, id: str = None):
         elif tipo:
             query = query.eq("tipo", tipo)
         
+        # Filtro por género si está presente
+        if genero and genero in ["Hombre", "Mujer"]:
+            query = query.eq("Genero", genero)
+        
         response = query.execute()
 
         if not response.data:
             raise HTTPException(
                 status_code=404,
-                detail="No se encontraron prendas de ropa."
+                detail="No se encontraron prendas de ropa con los filtros aplicados."
             )
         
         return response.data
@@ -232,7 +235,6 @@ async def get_ropa(tipo: str = None, id: str = None):
             status_code=500,
             detail=f"Error inesperado al obtener las prendas de ropa: {str(e)}"
         )
-
 
 
 from uuid import UUID
