@@ -282,3 +282,37 @@ async def guardar_conjunto(conjunto: schemas.ConjuntoCreate, authorization: str 
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
+    
+
+
+@router.get("/mis-conjuntos", response_model=list[schemas.ConjuntoCreate])
+async def obtener_conjuntos_del_usuario(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token no proporcionado")
+
+    token = authorization.split("Bearer ")[1]
+
+    try:
+        # Obtener el usuario desde el token
+        user_info = supabase.auth.get_user(token)
+        if not user_info or not user_info.user:
+            raise HTTPException(status_code=401, detail="Token inválido")
+
+        # Buscar en tabla 'users' el ID numérico interno
+        user_lookup = supabase.table("users").select("id").eq("auth_id", user_info.user.id).single().execute()
+
+        if not user_lookup.data:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado en base de datos")
+
+        user_id_int = user_lookup.data["id"]  # Este es el int4
+
+        # Buscar conjuntos de este usuario
+        conjuntos_response = supabase.table("conjuntos").select("*").eq("usuario", user_id_int).execute()
+
+        if not conjuntos_response.data:
+            return []  # No hay conjuntos
+
+        return conjuntos_response.data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener los conjuntos: {str(e)}")
