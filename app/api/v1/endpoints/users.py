@@ -165,10 +165,18 @@ async def get_current_user(authorization: str = Header(None)):
 
         # Obtener el auth_id
         auth_id = user_info.user.id
-
+        
+        user_data = (
+    supabase.table("users")
+    .select("username")
+    .eq("auth_id", auth_id)
+    .execute()
+      )
+        username = user_data.data[0].get("username") if user_data.data else None
         # Retornar solo el auth_id
         return {
-            "auth_id": auth_id
+            "auth_id": auth_id,
+            "username": username
         }
 
     except Exception as e:
